@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MD 뷰어 → PDF / Word",
-  "version": "1.0.1",
+  "version": "1.4.2",
   "description": "로컬 .md 파일을 열면 PDF 형태로 미리보고, PDF 또는 Word(.docx)로 저장합니다. F5로 다시 불러와도 보던 위치가 유지됩니다.",
   "icons": {
     "16": "icons/icon16.png",

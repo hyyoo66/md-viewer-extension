@@ -12,7 +12,6 @@
   var srcNoHash = src.split('#')[0];
 
   var toolbar = $('toolbar'), paper = $('paper'), statusEl = $('status'), fnameEl = $('fname');
-  var optHr = $('optHr'), optSub = $('optSub');
   $('ver').textContent = 'v' + APP_VERSION;
 
   var lastMd = '';          // 마지막으로 읽어 온 파일 내용
@@ -22,7 +21,6 @@
   var userMoved = false;    // 사용자가 직접 스크롤하면 늦은 보정(폰트 로딩 후)을 하지 않는다
 
   var SKEY = 'mdview.anchor:' + srcNoHash;
-  var OKEY = 'mdview.opts';
 
   /* ───────────── 유틸 ───────────── */
   function setStatus(msg, isErr) {
@@ -35,6 +33,10 @@
   function fileLabel() {
     try { return decodeURIComponent(srcNoHash.split('/').pop()); } catch (e) { return srcNoHash; }
   }
+  // 저장 파일명 기준: .md 파일 자체의 이름 (시험.md → 시험).  파일명에 쓸 수 없는 글자는 제거한다.
+  function fileBaseName() {
+    return fileLabel().replace(/\.(md|markdown)$/i, '').replace(/[\/:*?"<>|\\]/g, '').trim();
+  }
   function decodeText(buf) {
     try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { /* UTF-8 아님 */ }
     try { return new TextDecoder('euc-kr').decode(buf); } catch (e) { /* 미지원 */ }
@@ -45,18 +47,6 @@
       if (res.status >= 400) throw new Error('HTTP ' + res.status);
       return res.arrayBuffer();
     }).then(decodeText);
-  }
-
-  /* ───────────── 옵션 저장 ───────────── */
-  function loadOpts() {
-    try {
-      var o = JSON.parse(localStorage.getItem(OKEY) || '{}');
-      if (typeof o.hrAuto === 'boolean') optHr.checked = o.hrAuto;
-      if (typeof o.subtitle === 'boolean') optSub.checked = o.subtitle;
-    } catch (e) { /* 저장소 사용 불가 */ }
-  }
-  function saveOpts() {
-    try { localStorage.setItem(OKEY, JSON.stringify({ hrAuto: optHr.checked, subtitle: optSub.checked })); } catch (e) { /* 무시 */ }
   }
 
   /* ───────────── 스크롤 위치(앵커) 저장/복원 ─────────────
@@ -156,17 +146,28 @@
 
   function renderAll() {
     var md = cleanMd(lastMd);
-    setRenderOptions({ hrAuto: optHr.checked, subtitle: optSub.checked });
-    pdfName = getPdfName(md);
-    fnameEl.textContent = pdfName;
+    setRenderOptions({ hrAuto: true, subtitle: true });   // H2 자동줄 · 소제목 자동감지: 항상 켜짐(고정)
+    pdfName = fileBaseName() ? fileBaseName() + '.pdf' : getPdfName(md);   // 파일 이름 기준 (비면 첫 제목으로 대체)
+    fnameEl.textContent = fileLabel();   // 읽어 들인 .md 파일 이름 (저장 파일명은 pdfName / docx 에서 별도로 사용)
+    try { fnameEl.title = decodeURIComponent(srcNoHash.replace(/^file:\/\/\/?/i, '')); } catch (e) { fnameEl.title = srcNoHash; }   // 마우스를 올리면 전체 경로
     document.title = pdfName.replace(/\.pdf$/i, '') + ' — MD 뷰어';
     paper.innerHTML = md.trim() ? mdToHtml(md) : '<p class="empty">(빈 파일입니다)</p>';
     fixLinks();
-    if (!(window.MathJax && MathJax.typesetPromise)) return Promise.resolve();
-    return MathJax.startup.promise.then(function () {
-      MathJax.typesetClear([paper]);
-      return MathJax.typesetPromise([paper]);
-    }).catch(function (e) { console.warn('MathJax 오류:', e); });
+    var typeset =(window.MathJax && MathJax.typesetPromise)
+      ? MathJax.startup.promise.then(function () {
+          MathJax.typesetClear([paper]);
+          return MathJax.typesetPromise([paper]);
+        }).catch(function (e) { console.warn('MathJax 오류:', e); })
+      : Promise.resolve();
+    return typeset.then(waitImages);
+  }
+
+  // 그림이 디코딩되어 실제 높이가 정해진 뒤에 스크롤 위치를 맞추기 위해 기다린다
+  function waitImages() {
+    var imgs = paper.querySelectorAll('img');
+    return Promise.all(Array.prototype.map.call(imgs, function (im) {
+      return im.decode ? im.decode().catch(function () {}) : Promise.resolve();
+    }));
   }
 
   function showLoadError(e) {
@@ -184,13 +185,12 @@
 
   // 파일을 다시 읽어 렌더링하고, anchor 위치로 스크롤을 되돌린다.
   function loadFile(anchor) {
-    setStatus('불러오는 중…');
     return readSource().then(function (text) {
       lastMd = text;
-      return renderAll();
+      return renderAll();       // 렌더링 때마다 AI 지시서 유무도 다시 검사한다 (처음 열기 / F5 / ↻ 새로고침 모두 이 경로)
     }).then(function () {
       restoreAnchor(anchor);
-      setStatus('✅ ' + new Date().toLocaleTimeString('ko-KR', { hour12: false }) + ' 불러옴');
+      setStatus('');            // 불러오기 성공 메시지는 표시하지 않는다
       return true;
     }, function (e) {
       showLoadError(e);
@@ -199,13 +199,6 @@
   }
 
   /* ───────────── 버튼 ───────────── */
-  function rerender() {            // 옵션 토글: 파일은 다시 읽지 않고 같은 내용을 다시 그린다
-    var a = captureAnchor();
-    return renderAll().then(function () { restoreAnchor(a); });
-  }
-  optHr.addEventListener('change', function () { saveOpts(); rerender(); });
-  optSub.addEventListener('change', function () { saveOpts(); rerender(); });
-
   $('btnReload').addEventListener('click', function () { loadFile(captureAnchor()); });
 
   // PDF 저장 = 인쇄창. 저장 파일명은 인쇄 순간의 문서 제목으로 정해진다.
@@ -218,7 +211,7 @@
     var btn = $('btnDocx');
     btn.disabled = true;
     setStatus('docx 변환 중…');
-    buildDocx(lastMd).then(function (r) {
+    buildDocx(lastMd, fileBaseName()).then(function (r) {
       var url = URL.createObjectURL(r.blob);
       var a = document.createElement('a');
       a.href = url; a.download = r.filename;
@@ -231,8 +224,35 @@
     }).then(function () { btn.disabled = false; });
   });
 
+  /* ───────────── 그림 삽입 기능 안내 (AI 지시서 + 복사 버튼) ─────────────
+     file:// 로 연 파일은 확장 프로그램이 쓸 수 없으므로, 지시서는 클립보드로 복사해서 에디터에서 직접 붙여넣는다. */
+  var guide = $('guide'), guideCopyMsg = $('guideCopyMsg'), guideMsgTimer = 0;
+  $('guideBlock').textContent = AI_INSTRUCTION_BLOCK;     // 안내창 안에 지시서 본문을 그대로 보여준다
+
+  function openGuide() { guide.hidden = false; guide.scrollTop = 0; }
+  function closeGuide() { guide.hidden = true; }
+
+  function showCopyMsg(msg, isErr) {
+    guideCopyMsg.textContent = msg;
+    guideCopyMsg.className = 'copymsg' + (isErr ? ' err' : '');
+    clearTimeout(guideMsgTimer);
+    guideMsgTimer = setTimeout(function () { guideCopyMsg.textContent = ''; }, 5000);
+  }
+  function copyInstructions() {
+    return navigator.clipboard.writeText(AI_INSTRUCTION_BLOCK).then(function () {
+      showCopyMsg('✅ 복사했습니다. AI 대화창에 붙여넣으세요.');
+    }, function () {
+      showCopyMsg('❌ 복사에 실패했습니다. 아래 지시서를 직접 선택(클릭)해 Ctrl+C 하세요.', true);
+    });
+  }
+
+  $('btnGuide').addEventListener('click', openGuide);
+  $('guideClose').addEventListener('click', closeGuide);
+  $('guideCopy').addEventListener('click', copyInstructions);
+  guide.addEventListener('mousedown', function (e) { if (e.target === guide) closeGuide(); });   // 바깥 영역 클릭
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !guide.hidden) closeGuide(); });
+
   /* ───────────── 시작 ───────────── */
-  loadOpts();
   try { history.scrollRestoration = 'manual'; } catch (e) { /* 무시 */ }
 
   var saved = loadSavedAnchor();

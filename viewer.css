@@ -12,7 +12,6 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 .lbl{font-size:11px;color:var(--ink3)}
 .fname{font-family:Consolas,monospace;font-size:12px;color:var(--accent);font-weight:600;
   max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.opt{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink2);cursor:pointer;user-select:none}
 .spacer{flex:1}
 .status{font-size:12px;color:#276a3a}
 .status.err{color:#8b2e24}
@@ -22,6 +21,7 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 .btn.primary:hover{background:#a8421a;border-color:#a8421a}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
+[hidden]{display:none!important}
 /* ── A4 용지처럼 보이는 미리보기 ── */
 #stage{padding:18px 12px 60px}
 #paper{width:210mm;max-width:100%;min-height:297mm;margin:0 auto;padding:15mm 17mm;background:#fff;
@@ -42,15 +42,37 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 #paper tr:nth-child(odd) td{background:#fff}
 #paper a{color:#0563C1}
 #paper code{font-family:Consolas,monospace;font-size:.92em}
+#paper img{max-width:100%;height:auto}
 #paper .img-ph{color:#888}
 #paper .empty{color:var(--ink3)}
 #paper .load-error{font-family:'맑은 고딕',sans-serif}
+
+/* ── 그림 삽입 기능 안내 (모달) ── */
+.modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;
+  padding:5vh 12px;overflow:auto;overscroll-behavior:contain}
+.modal-box{width:min(780px,100%);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:8px;
+  box-shadow:0 8px 40px rgba(0,0,0,.35);overscroll-behavior:contain}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)}
+.modal-head h2{margin:0;font-size:17px}
+.modal-body{padding:6px 22px 22px;overflow:auto;font-size:13.5px;line-height:1.65;color:var(--ink)}
+.modal-body h3{font-size:14px;margin:18px 0 6px;color:var(--accent)}
+.modal-body p{margin:10px 0}
+.modal-body p.principle{margin:14px 0 4px;padding:9px 12px;background:#fff4ec;border-left:4px solid var(--accent);border-radius:3px;color:#7a2f0c}
+.modal-body ol,.modal-body ul{margin:6px 0;padding-left:22px}
+.modal-body li{margin:3px 0}
+.modal-body code{font-family:Consolas,monospace;font-size:12.5px;background:#f2f1ec;padding:1px 5px;border-radius:3px}
+.modal-body pre{font-family:Consolas,'맑은 고딕',monospace;font-size:12px;line-height:1.55;background:#f7f6f2;border:1px solid var(--border);
+  border-radius:6px;padding:10px 12px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
+.modal-body pre.block{max-height:300px;overflow:auto;user-select:all}
+.copyrow{display:flex;align-items:center;gap:12px;margin:6px 0}
+.copymsg{font-size:12.5px;color:#276a3a}
+.copymsg.err{color:#8b2e24}
 
 /* ── 인쇄(= PDF 저장) ── */
 @page{size:A4;margin:15mm 17mm}
 @media print{
   body{background:#fff}
-  #toolbar{display:none!important}
+  #toolbar,.modal{display:none!important}
   #stage{padding:0}
   #paper{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}
 }

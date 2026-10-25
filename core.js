@@ -1,5 +1,5 @@
 // 확장 프로그램용 코어: 원본 markdown_word_PDF_converter.html 의 변환 로직을 그대로 가져온 것.
-// (LaTeX 파서 / OMML 변환 / 마크다운 파서 / docx 생성)  UI·이미지 기능은 포함하지 않는다.
+// (LaTeX 파서 / OMML 변환 / 마크다운 파서 / docx 생성)  UI 는 포함하지 않는다. 그림은 md 안의 Base64(data:) 만 지원.
 
 let hrAutoMode=true;        // false=원문 충실, true=H2 자동줄
 let subtitleDetectMode=true; // false=소제목 감지 끔, true=소제목 자동감지
@@ -23,6 +23,7 @@ const _SYMS={
   sigma:'σ',tau:'τ',upsilon:'υ',phi:'φ',chi:'χ',psi:'ψ',omega:'ω',
   Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω',
   infty:'∞',pm:'±',mp:'∓',times:'×',div:'÷',cdot:'·',leq:'≤',geq:'≥',neq:'≠',
+  Re:'ℜ',Im:'ℑ',
   le:'≤',ge:'≥',ne:'≠',ll:'≪',gg:'≫',propto:'∝',circ:'∘',degree:'°',angle:'∠',
   varepsilon:'ε',vartheta:'ϑ',varphi:'φ',omicron:'ο',leftrightarrow:'↔',Rightarrow:'⇒',uparrow:'↑',downarrow:'↓',
   approx:'≈',equiv:'≡',sim:'∼',sum:'∑',prod:'∏',int:'∫',oint:'∮',partial:'∂',nabla:'∇',
@@ -63,8 +64,9 @@ function parseLaTeX(latex){
       if(cmd==='frac'){const n=group(),d=group();return{type:'mfrac',ch:[n,d]};}
       if(cmd==='sqrt'){eatSp();if(peek()==='['){pos++;let r='';while(pos<s.length&&peek()!==']')r+=s[pos++];eat(']');return{type:'mroot',ch:[group(),parseLaTeX(r)]};}return{type:'msqrt',ch:[group()]};}
       if(cmd==='left'||cmd==='right'){eatSp();if(pos<s.length)pos++;return null;}
-      if(cmd==='text'||cmd==='mathrm'||cmd==='textrm'){
-        // \text{ kHz} 처럼 중괄호 안 원문을 공백까지 그대로 보존하는 정자체 텍스트로 처리
+      if(cmd==='text'||cmd==='mathrm'||cmd==='textrm'||cmd==='operatorname'){
+        // \text{ kHz}, \operatorname{Re} 처럼 중괄호 안 원문을 공백까지 그대로 보존하는 정자체 텍스트로 처리
+        if(cmd==='operatorname')eat('*'); // \operatorname*{...}
         eatSp();
         if(peek()==='{'){
           pos++;let depth=1,raw='';
@@ -73,7 +75,8 @@ function parseLaTeX(latex){
         }
         return group();
       }
-      if(cmd==='mathbf'||cmd==='mathit')return group();
+      // 글꼴 지정 명령: 글꼴은 무시하고 내용만 사용 (명령 이름이 글자로 찍히는 것 방지)
+      if(cmd==='mathbf'||cmd==='mathit'||cmd==='mathbb'||cmd==='mathcal'||cmd==='mathsf'||cmd==='mathtt'||cmd==='boldsymbol'||cmd==='bm')return group();
       if(cmd==='vec'||cmd==='hat'||cmd==='tilde'||cmd==='overline')return{type:'mover',ch:[group(),{type:'mo',val:{vec:'→',hat:'^',tilde:'~',overline:'‾'}[cmd]}]};
       if(cmd==='quad'||cmd==='qquad')return{type:'mspace'};
       if(cmd===','||cmd===';'||cmd===':'||cmd===' ')return{type:'mo',val:' '}; // \, \; \: \  → 공백
@@ -191,6 +194,68 @@ async function patchMathInBlob(blob){
 }
 
 // ════════════════════════════════════════════════════════
+// 주석 / 그림 (md 파일 안의 Base64 그림)
+//  - <!-- ... --> 주석(한 줄·여러 줄)은 미리보기·PDF·docx 어디에도 나오지 않는다. (AI용 지시서를 적어 두는 용도)
+//  - 그림은 본문에 ![설명][이름] (또는 ![설명](data:image/...)) 로 쓰고,
+//    파일 맨 아래에 [이름]: data:image/jpeg;base64,.... 형태의 참조 정의로 모아 둔다.
+//    참조 정의 줄은 화면에 출력하지 않고 imageRefs 에만 모은다.
+// ════════════════════════════════════════════════════════
+let imageRefs={};   // 참조이름(소문자·공백정리) → data:image/... URL
+function normRef(s){return String(s||'').trim().replace(/\s+/g,' ').toLowerCase();}
+
+// 코드 펜스(```) 안은 건드리지 않고 <!-- ... --> 를 제거. 주석만 있는 줄은 줄째 사라진다.
+function stripHtmlComments(md){
+  const out=[];let inCode=false,inCmt=false;
+  for(const raw of md.split('\n')){
+    if(!inCmt&&/^\s*```/.test(raw)){inCode=!inCode;out.push(raw);continue;}
+    if(inCode){out.push(raw);continue;}
+    let kept='',pos=0;
+    while(pos<raw.length){
+      if(inCmt){
+        const e=raw.indexOf('-->',pos);
+        if(e<0){pos=raw.length;break;}
+        inCmt=false;pos=e+3;
+      }else{
+        const b=raw.indexOf('<!--',pos);
+        if(b<0){kept+=raw.slice(pos);pos=raw.length;break;}
+        kept+=raw.slice(pos,b);inCmt=true;pos=b+4;
+      }
+    }
+    if(kept.trim()===''&&(raw.trim()!==''||inCmt))continue; // 주석만 있던 줄 / 주석 안쪽 줄
+    out.push(kept);
+  }
+  return out.join('\n');
+}
+
+// "[이름]: data:image/...;base64,..." 정의 줄을 imageRefs 에 모으고 본문에서는 뺀다.
+function extractImageRefs(md){
+  imageRefs={};
+  const out=[];let inCode=false;
+  for(const raw of md.split('\n')){
+    if(/^\s*```/.test(raw)){inCode=!inCode;out.push(raw);continue;}
+    if(!inCode){
+      const m=raw.match(/^\s{0,3}\[([^\]]+)\]:\s*<?(data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*$/i);
+      if(m){imageRefs[normRef(m[1])]=m[2];continue;}
+    }
+    out.push(raw);
+  }
+  return out.join('\n');
+}
+
+// 그림만 있는 줄: ![설명][이름]  또는  ![설명](url)  (여러 개 가능)
+function isImageLine(t){
+  return /^(?:!\[[^\]]*\](?:\([^)]+\)|\[[^\]]*\])\s*)+$/.test((t||'').trim());
+}
+// 그림 바로 아래 캡션: *그림 1. 설명*  /  _..._  /  그림 1. 설명  /  Figure 1: ...
+function isCaptionLine(t){
+  t=(t||'').trim();
+  if(!t||t.length>200)return false;
+  if(/^\*[^*].*\*$/.test(t))return true;
+  if(/^_[^_].*_$/.test(t))return true;
+  return /^(?:그림|Figure|Fig\.)\s*\d+\s*[.:)]/.test(t);
+}
+
+// ════════════════════════════════════════════════════════
 // 줄바꿈(soft-wrap) 병합: 사람이 가독성 때문에 문단/불릿 중간에서
 // 그냥 줄바꿈만 해둔 경우, 새 블록(헤딩/불릿/표/hr/코드펜스/빈줄)이
 // 아니면 이전 줄에 이어붙인다. 코드펜스(```) 내부는 절대 건드리지 않음.
@@ -205,7 +270,7 @@ function _isBlockStartLine(t){
   if(/^\d+\.\s/.test(t))return true;
   if(/^[가-힣]\.\s/.test(t))return true; // 한글 순번 목록 (가. 나. 다. ...)
   if(/^\$\$/.test(t)||/^\\\[/.test(t)||/^\[\s*$/.test(t))return true; // 블록 수식 시작
-  if(/^!\[[^\]]*\]\([^)]+\)/.test(t))return true; // 이미지
+  if(/^!\[[^\]]*\](?:\([^)]+\)|\[[^\]]*\])/.test(t))return true; // 그림
   if(/^\[\/\/\]:\s*#\s*\(/.test(t))return true; // 마크다운 주석(링크 참조 정의) 트릭
   if(/^>\s?/.test(t))return true; // 인용구
   return false;
@@ -226,7 +291,7 @@ function joinWrappedLines(arr){
     if(t===''){out.push(raw);continue;}
     if(_isBlockStartLine(t)||out.length===0){out.push(raw);continue;}
     const prev=out[out.length-1],prevT=prev.trim();
-    const prevIsMergeable=prevT!==''&&!/^```/.test(prevT)&&!/^#{1,6}\s/.test(prevT)&&!/^[-=]{3,}\s*$/.test(prevT)&&!prevT.startsWith('|')&&!isMdComment(prevT);
+    const prevIsMergeable=prevT!==''&&!/^```/.test(prevT)&&!/^#{1,6}\s/.test(prevT)&&!/^[-=]{3,}\s*$/.test(prevT)&&!prevT.startsWith('|')&&!isMdComment(prevT)&&!isImageLine(prevT);
     if(prevIsMergeable)out[out.length-1]=prev.replace(/\s+$/,'')+' '+t;
     else out.push(raw);
   }
@@ -309,7 +374,7 @@ function parseMd(md){
 
   const{Paragraph,TextRun,Table,TableRow,TableCell,
         HeadingLevel,AlignmentType,BorderStyle,WidthType,
-        ShadingType,LevelFormat,ExternalHyperlink,UnderlineType,LineRuleType,TabStopType}=docx;
+        ShadingType,LevelFormat,ExternalHyperlink,UnderlineType,LineRuleType,TabStopType,ImageRun}=docx;
   const CW=9360;
   const cb={style:BorderStyle.SINGLE,size:1,color:'AAAAAA'};
   const cbs={top:cb,bottom:cb,left:cb,right:cb};
@@ -322,8 +387,15 @@ function parseMd(md){
       if(text[i]==='\\'&&text[i+1]==='('){const e=text.indexOf('\\)',i+2);if(e>i){tokens.push({type:'math',latex:text.slice(i+2,e)});i=e+2;continue;}}
       // $...$ 수식
       if(text[i]==='$'&&text[i+1]!=='$'){const e=text.indexOf('$',i+1);if(e>i){tokens.push({type:'math',latex:text.slice(i+1,e)});i=e+1;continue;}}
-      // ![alt](url) 이미지
-      if(text[i]==='!'&&text[i+1]==='['){const m=text.slice(i).match(/^!\[([^\]]*)\]\(([^)]+)\)/);if(m){tokens.push({type:'image',alt:m[1],url:m[2]});i+=m[0].length;continue;}}
+      // 그림: ![alt](url) / ![alt][이름] / ![이름][]
+      if(text[i]==='!'&&text[i+1]==='['){
+        const rest=text.slice(i);
+        let m=rest.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+        if(m){tokens.push({type:'image',alt:m[1],ref:'',url:m[2].trim()});i+=m[0].length;continue;}
+        m=rest.match(/^!\[([^\]]*)\]\[([^\]]*)\]/);
+        if(m){const ref=m[2]||m[1];tokens.push({type:'image',alt:m[1],ref:ref,url:imageRefs[normRef(ref)]||''});i+=m[0].length;continue;}
+        tokens.push({type:'text',text:'!',bold,italic});i++;continue; // 그림 문법이 아닌 '!['
+      }
       // [text](url) 링크
       if(text[i]==='['){const m=text.slice(i).match(/^\[([^\]]+)\]\(([^)]+)\)/);if(m){tokens.push({type:'link',text:m[1],url:m[2]});i+=m[0].length;continue;}else{tokens.push({type:'text',text:'[',bold,italic});i++;continue;}}
       // https:// URL
@@ -352,8 +424,15 @@ function parseMd(md){
       if(tk.type==='math'){
         out.push(new TextRun({text:makeMathMarker(tk.latex.trim(),false),font:'Arial',size:fs}));
       } else if(tk.type==='image'){
-        // 이미지 기능은 제외: 자리만 회색 텍스트로 표시
-        out.push(new TextRun({text:'[이미지: '+(tk.alt||tk.url)+']',font:fnt,size:fs,color:'888888'}));
+        const info=tk.url?docxImgCache[tk.url]:null;
+        if(info){
+          const{width,height}=fitImg(info.width,info.height);
+          out.push(new ImageRun({data:info.data,transformation:{width,height}}));
+        } else if(tk.url&&!/^data:image\//i.test(tk.url)){
+          out.push(new TextRun({text:'[이미지: '+(tk.alt||tk.url)+']',font:fnt,size:fs,color:'888888'})); // 외부 URL 은 지원하지 않음
+        } else {
+          out.push(new TextRun({text:'[이미지 없음: '+(tk.ref||tk.alt||'')+']',font:fnt,size:fs,color:'C00000'}));
+        }
       } else if(tk.type==='link'){
         out.push(new ExternalHyperlink({link:tk.url,children:[new TextRun({text:tk.text,color:'0563C1',underline:{type:UnderlineType.SINGLE},font:fnt,size:fs,bold:tk.bold||baseBold})]}));
       } else if(tk.type==='text'&&tk.text){
@@ -373,7 +452,7 @@ function parseMd(md){
   const linesClean=[];let prevEmpty=false;
   for(const l of lines){const empty=!l.trim();if(empty&&prevEmpty)continue;linesClean.push(l);prevEmpty=empty;}
   const linesF=linesClean;
-  let i=0;
+  let i=0,afterFigure=false;
 
   while(i<linesF.length){
     if(isMdComment(linesF[i])){i++;continue;}
@@ -391,6 +470,18 @@ function parseMd(md){
       ch.push(new Paragraph({children:[new TextRun('')],spacing:{after:80}}));
       continue;
     }
+
+    // 그림 줄(그림만 있는 줄): 가운데 정렬, 다음 줄(캡션)과 한 페이지에 머물도록 keepNext
+    if(isImageLine(line)){
+      ch.push(new Paragraph({alignment:AlignmentType.CENTER,keepNext:true,spacing:{before:120,after:40},children:inline(line.trim())}));
+      afterFigure=true;i++;continue;
+    }
+    // 그림 바로 아래 캡션: 가운데 정렬 (*그림 1. 설명* 의 *는 이탤릭으로 처리됨)
+    if(afterFigure&&isCaptionLine(line)){
+      ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:160},children:inline(line.trim(),{size:20,color:'444444'})}));
+      afterFigure=false;i++;continue;
+    }
+    if(line.trim()!=='')afterFigure=false; // 그림 다음에 캡션이 아닌 내용이 오면 캡션 대기 해제 (빈 줄은 유지)
 
     // 헤딩
     const hm=line.match(/^\s*(#{1,6})(?!#)\s+(.+)/);
@@ -520,7 +611,7 @@ function parseMd(md){
     md = md.replace(/\[cite[^\]]*\]/gi, '');
     const linesRaw=md.replace(/﻿/,'').replace(/\n{3,}/g,'\n\n').split('\n');
     const lines=joinWrappedLines(linesRaw);
-    let html='',i=0;
+    let html='',i=0,afterFigure=false;
     while(i<lines.length){
       if(isMdComment(lines[i])){i++;continue;}
       const line=lines[i];
@@ -533,6 +624,16 @@ function parseMd(md){
         html+=`<pre style="background:#f2f1ec;border:1px solid #ddd;padding:8pt 10pt;font-family:'IBM Plex Mono',Consolas,monospace;font-size:8pt;white-space:pre;overflow:hidden;line-height:1.4;margin:6pt 0">${codeLines.map(_esc).join('\n')}</pre>`;
         continue;
       }
+      // 그림 줄 / 그림 바로 아래 캡션: 가운데 정렬 (인쇄 시 그림과 캡션이 갈라지지 않게)
+      if(isImageLine(line)){
+        html+=`<p style="text-align:center;margin:8pt 0 2pt;page-break-inside:avoid;break-after:avoid">${inlineHtml(line.trim())}</p>`;
+        afterFigure=true;i++;continue;
+      }
+      if(afterFigure&&isCaptionLine(line)){
+        html+=`<p style="text-align:center;font-size:9.5pt;color:#444;margin:2pt 0 8pt">${inlineHtml(line.trim())}</p>`;
+        afterFigure=false;i++;continue;
+      }
+      if(line.trim()!=='')afterFigure=false;
       const hm=line.match(/^\s*(#{1,6})(?!#)\s+(.+)/);
       if(hm){
         const lv=hm[1].length;
@@ -581,12 +682,19 @@ function parseMd(md){
     }
     return html;
   }
+  // data: 그림은 <img> 로, 참조 이름을 못 찾았거나 외부 URL 이면 자리 표시 텍스트로 (alt 는 이미 이스케이프된 상태)
+  function imgHtml(alt,url,ref){
+    if(/^data:image\//i.test(url))return `<img src="${url}" alt="${alt}" style="max-width:100%;height:auto">`;
+    if(url)return `<span class="img-ph">[이미지: ${alt||url}]</span>`;
+    return `<span class="img-ph" style="color:#C00000">[이미지 없음: ${ref||alt}]</span>`;
+  }
   function inlineHtml(t){
     // 확장 프로그램 페이지에서 파일 내용을 그대로 HTML 로 넣지 않도록 특수문자를 먼저 이스케이프하고,
     // 표 셀 줄바꿈 등에 흔히 쓰이는 안전한 태그(<br>, <sub>, <sup>, <b>, <i>, <u>, <strong>, <em>)만 다시 허용한다.
     t=_esc(t).replace(/&lt;br\s*\/?&gt;/gi,'<br>').replace(/&lt;(\/?)(sub|sup|b|i|u|strong|em)&gt;/gi,'<$1$2>');
     return t.replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>')
-      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,function(_,alt){return `<span class="img-ph">[이미지: ${alt}]</span>`;})
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,function(_,alt,url){return imgHtml(alt,url.trim(),'');})
+      .replace(/!\[([^\]]*)\]\[([^\]]*)\]/g,function(_,alt,ref){ref=ref||alt;return imgHtml(alt,imageRefs[normRef(ref)]||'',ref);})
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g,function(_,txt,url){
         url=url.trim().replace(/"/g,'%22');
         if(/^javascript:/i.test(url))url='#';
@@ -597,13 +705,101 @@ function parseMd(md){
 // ════════════════════════════════════════════════════════
 // 파일 내용 정리 / .docx 생성 (원본 convert() 에서 화면(UI) 부분만 뺀 것)
 // ════════════════════════════════════════════════════════
-function cleanMd(raw){return String(raw||'').replace(/^﻿/,'').replace(/\[cite[^\]]*\]/gi,'');}
+function cleanMdBase(raw){return String(raw||'').replace(/^﻿/,'').replace(/\[cite[^\]]*\]/gi,'');}
+// BOM·[cite] 제거 → <!-- --> 주석 제거 → 그림 참조 정의 추출(imageRefs 갱신, 정의 줄은 본문에서 제거)
+function cleanMd(raw){return extractImageRefs(stripHtmlComments(cleanMdBase(raw)));}
 function getPdfName(md){return getFilename(md).replace(/\.docx$/i,'.pdf');}
 
-async function buildDocx(rawMd){
+// ── AI 지시서 ──
+// AI 대화창(ChatGPT, Claude 등)에 붙여넣는 지시문. AI 가 그림을 넣고 바꾸고 지우는 방법을 알게 한다. (.md 파일에는 넣지 않는다)
+// 문구를 바꾸려면 이 상수만 고치면 된다. 안내창의 표시와 복사에 같이 반영된다. (백틱·${ 는 쓸 수 없음)
+const AI_INSTRUCTION_BLOCK=`[그림 삽입 지시서]
+지금부터 내가 올리는 마크다운(.md) 파일에 그림을 넣거나 바꾸거나 지울 때, 아래 규칙대로 작업해 줘.
+(이 .md 파일은 뷰어로 보고 PDF/Word로 저장하는 용도야. 그림은 파일 안에 Base64로 직접 넣는 방식이야.)
+
+0. 준비
+   - 내가 .md 파일 내용과 그림을 같이 줄 거야. 파일 전체를 기준으로 작업해 줘.
+   - 그림을 줄이거나 Base64로 바꾸려면 코드 실행 도구(Python 등)로 실제로 처리해 줘.
+     코드를 실행할 수 없으면 Base64 값을 지어내지 말고, 할 수 없다고 먼저 알려 줘.
+
+1. 그림 추가 ("○○ 제목 밑에 이 그림 넣어줘")
+   - 그림을 가로 1000px 이하로 줄이고 JPG(품질 85)로 압축
+   - Base64로 인코딩해서 파일 맨 아래 [그림 데이터] 구역에 참조 정의로 추가 (반드시 한 줄, 줄바꿈 금지)
+       예) [회로도1]: data:image/jpeg;base64,/9j/4AAQ....
+   - 파일 맨 아래에 아래 주석이 없으면 먼저 추가하고, 그 아래에 참조 정의를 모음
+       <!-- [그림 데이터] 아래에 참조 정의만 둘 것 -->
+   - 지정한 제목 바로 밑에는 참조 태그와 캡션만 넣음
+       예) ![LLC 공진 파형][회로도1]
+           *그림 1. LLC 공진 파형*
+   - 참조 이름은 내용을 알 수 있게 한글/영문으로 붙임 (예: 회로도1, 파형_LLC). 이미 쓴 이름과 겹치면 안 됨
+
+2. 그림 교체 ("그림 N을 이걸로 바꿔줘")
+   - 특별한 말이 없으면 캡션은 그대로 두고 맨 아래 데이터만 교체
+   - "캡션도 바꿔줘"라고 하면 캡션만 수정
+
+3. 그림 번호
+   - 본문에 나오는 순서대로 "그림 1, 그림 2..." 번호를 매김
+   - 그림을 추가·삭제·이동하면 모든 번호를 다시 매기고, 본문에서 "그림 N"을 언급한 곳도 함께 고침
+
+4. 그림 삭제
+   - 본문의 참조 태그·캡션과 맨 아래 데이터를 같이 지움
+
+5. 공통
+   - 그림 작업 시 본문 내용은 건드리지 말 것 (그림 줄·캡션·맨 아래 그림 데이터만 수정)
+   - 기존 그림 데이터 줄은 한 글자도 바꾸지 말고 그대로 둘 것
+   - 편집이 끝나면 수정된 .md 전체를 돌려줘. 가능하면 다운로드 파일로, 채팅창에 줄 때는 일부를 생략하지 말 것
+
+이해했으면 "이해했습니다"라고만 답하고, 내가 파일과 그림을 줄 때까지 기다려 줘.`;
+
+// ── docx 용 그림 준비 ──
+// docx 8.5.0 의 ImageRun 은 데이터를 항상 .png 로 취급하므로, PNG 가 아닌 그림(JPEG/GIF/WebP 등)은 PNG 로 변환해서 넣는다.
+let docxImgCache={};   // data URL → {data:Uint8Array, width, height}
+function fitImg(w,h){  // 페이지 본문 폭(약 600px)과 높이(약 820px) 안으로 비율 유지 축소
+  if(!w||!h)return{width:300,height:200};
+  const s=Math.min(1,600/w,820/h);
+  return{width:Math.round(w*s),height:Math.round(h*s)};
+}
+function b64ToBytes(b64){
+  const bin=atob(b64),bytes=new Uint8Array(bin.length);
+  for(let k=0;k<bin.length;k++)bytes[k]=bin.charCodeAt(k);
+  return bytes;
+}
+async function loadImgInfo(url){
+  const m=url.match(/^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)$/i);
+  if(!m)return null;
+  let mime=m[1].toLowerCase(),bytes=b64ToBytes(m[2]);
+  const bmp=await createImageBitmap(new Blob([bytes],{type:mime}));
+  const w=bmp.width,h=bmp.height;
+  if(mime!=='image/png'){
+    const sc=Math.min(1,1200/w);                       // 변환본이 너무 커지지 않도록 가로 1200px 까지만
+    const cv=document.createElement('canvas');
+    cv.width=Math.max(1,Math.round(w*sc));cv.height=Math.max(1,Math.round(h*sc));
+    const cx=cv.getContext('2d');
+    cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height); // 투명 배경은 흰색으로
+    cx.drawImage(bmp,0,0,cv.width,cv.height);
+    const png=await new Promise(function(res){cv.toBlob(res,'image/png');});
+    bytes=new Uint8Array(await png.arrayBuffer());
+  }
+  if(bmp.close)bmp.close();
+  return{data:bytes,width:w,height:h};
+}
+async function prepareDocxImages(md){
+  docxImgCache={};
+  const urls=new Set(Object.keys(imageRefs).map(function(k){return imageRefs[k];}));
+  const re=/!\[[^\]]*\]\((data:image\/[^)\s]+)\)/g;let m;
+  while((m=re.exec(md)))urls.add(m[1]);
+  for(const u of urls){
+    try{const info=await loadImgInfo(u);if(info)docxImgCache[u]=info;}
+    catch(e){console.warn('그림을 읽을 수 없습니다:',e);}
+  }
+}
+
+// baseName 이 주어지면(.md 파일 이름 기준) "<baseName>.docx" 로, 없으면 문서 첫 제목으로 파일명을 정한다.
+async function buildDocx(rawMd,baseName){
   if(typeof docx==='undefined')throw new Error('docx 라이브러리를 불러오지 못했습니다.');
   const md=cleanMd(rawMd);
   if(!md.trim())throw new Error('내용이 비어 있습니다.');
+  await prepareDocxImages(md);
   const{Document,Packer,LevelFormat,AlignmentType,UnderlineType}=docx;
   const doc2=new Document({
     numbering:{config:[
@@ -628,5 +824,5 @@ async function buildDocx(rawMd){
   });
   let blob=await Packer.toBlob(doc2);
   if(mathQueue.length>0)blob=await patchMathInBlob(blob);
-  return{blob,filename:getFilename(md)};
+  return{blob,filename:baseName?baseName+'.docx':getFilename(md)};
 }

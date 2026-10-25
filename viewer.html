@@ -17,16 +17,64 @@
   <strong class="brand">md → pdf / docx</strong>
   <span class="ver" id="ver"></span>
   <span class="sep"></span>
-  <span class="lbl">저장명</span><span class="fname" id="fname">—</span>
-  <span class="sep"></span>
-  <label class="opt"><input type="checkbox" id="optHr" checked> H2 자동줄</label>
-  <label class="opt"><input type="checkbox" id="optSub" checked> 소제목 자동감지</label>
+  <span class="lbl">파일</span><span class="fname" id="fname">—</span>
   <span class="spacer"></span>
   <span class="status" id="status"></span>
+  <button type="button" class="btn" id="btnGuide" title="AI로 그림을 삽입하는 방법과 AI 지시서를 보여줍니다">그림 삽입 기능 안내</button>
   <button type="button" class="btn" id="btnReload" title="파일을 다시 읽습니다 (F5와 같음, 보던 위치 유지)">↻ 새로고침</button>
   <button type="button" class="btn primary" id="btnPdf" title="인쇄 창에서 'PDF로 저장'을 선택하세요">PDF로 저장</button>
-  <button type="button" class="btn primary" id="btnDocx">.docx로 저장</button>
+  <button type="button" class="btn primary" id="btnDocx">docx로 저장</button>
 </header>
+<div id="guide" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="guideTitle">그림 삽입 기능 안내</h2>
+      <button type="button" class="btn" id="guideClose" aria-label="닫기">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="principle"><b>md 파일은 AI가 작성 편집하는 것을 원칙으로 합니다.</b></p>
+      <p>이 뷰어는 <b>.md 파일 안에 그림을 직접 넣어 두는 방식(Base64)</b>을 지원합니다.
+         그림을 넣고 바꾸고 지우는 편집은 <b>AI</b>가 해 주며, 아래 <b>AI 지시서</b>를 AI에게 먼저 붙여넣으면 AI가 그 방법을 알고 같은 방식으로 처리합니다. (지시서는 .md 파일에 넣지 않습니다.)</p>
+
+      <h3>사용 순서</h3>
+      <ol>
+        <li>아래 <b>[AI 지시서 복사]</b>를 눌러, AI(ChatGPT, Claude 등) <b>대화창에 붙여넣고 전송</b>합니다.
+            AI가 "이해했습니다"라고 답하면 준비가 끝난 것입니다. (새 대화를 시작할 때마다 한 번)</li>
+        <li>이어서 <b>.md 파일과 넣을 그림</b>을 AI에게 주고(첨부 또는 붙여넣기) 이렇게 요청합니다.
+          <ul>
+            <li>"○○ 제목 밑에 이 그림 넣어줘"</li>
+            <li>"그림 2를 이걸로 바꿔줘" &nbsp;/&nbsp; "캡션도 바꿔줘"</li>
+            <li>"그림 3 삭제해줘"</li>
+          </ul>
+        </li>
+        <li>AI가 돌려준 <b>전체 파일 내용</b>으로 .md 파일을 덮어쓰고 저장합니다.</li>
+        <li>이 뷰어 탭에서 <b>F5</b>를 누르면 그림이 반영되고, 보던 위치는 그대로 유지됩니다.</li>
+      </ol>
+
+      <h3>파일에 들어가는 모양</h3>
+      <pre class="ex">본문 (제목 바로 밑)
+![LLC 공진 파형][회로도1]
+*그림 1. LLC 공진 파형*
+
+파일 맨 아래
+&lt;!-- [그림 데이터] 아래에 참조 정의만 둘 것 --&gt;
+[회로도1]: data:image/jpeg;base64,/9j/4AAQ....</pre>
+      <ul>
+        <li>그림은 가로 1000px 이하 JPG로 줄여 Base64로 파일 맨 아래에 모입니다. 그림 번호는 AI가 순서대로 다시 매깁니다.</li>
+        <li>그림 바로 아래 <code>*그림 N. 설명*</code> 줄은 가운데 정렬 캡션으로 표시됩니다.</li>
+        <li>.md 파일 하나에 그림이 모두 들어 있어 파일을 옮겨도 그림이 따라갑니다. 대신 파일 크기가 커집니다.</li>
+        <li>아래쪽 그림 데이터 줄은 반드시 <b>한 줄</b>이어야 합니다. 외부 주소(URL) 그림은 지원하지 않습니다.</li>
+      </ul>
+
+      <h3>AI 지시서 (AI 대화창에 붙여넣기)</h3>
+      <div class="copyrow">
+        <button type="button" class="btn primary" id="guideCopy">📋 AI 지시서 복사</button>
+        <span id="guideCopyMsg" class="copymsg"></span>
+      </div>
+      <pre id="guideBlock" class="block"></pre>
+    </div>
+  </div>
+</div>
 <main id="stage">
   <article id="paper"></article>
 </main>
