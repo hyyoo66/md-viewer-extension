@@ -1,0 +1,64 @@
+# MD 뷰어 → PDF / Word (Chrome · Brave 확장 프로그램)
+
+탐색기에서 **`.md` 파일을 더블클릭하면 A4 용지 모양의 PDF 미리보기**로 열리고, 버튼 한 번으로 **PDF** 또는 **Word(.docx)** 로 저장되는 확장 프로그램입니다.
+에디터로 고치고 **F5** 를 누르면 바뀐 내용이 다시 그려지고, **보던 위치가 그대로 유지**됩니다.
+
+## 기능
+
+- `.md` 더블클릭 → 용지 모양 미리보기 (제목, 표, 굵은 글씨, 하위 목록, 인용구)
+- 수식 지원: `$E=mc^2$`, `$$ ... $$`, `\( ... \)`, `\[ ... \]`
+- **PDF로 저장**: 인쇄창의 "PDF로 저장" 사용 (파일명은 첫 제목에서 자동 생성)
+- **.docx로 저장**: 수식은 Word 수식(OMML)으로, 표는 Word 표로 변환
+- **F5 새로고침 시 보던 위치 유지**: 보이지 않는 위쪽을 고쳐서 길이가 바뀌어도 같은 내용이 보입니다
+- 인터넷 연결 없이 동작 (docx, JSZip, MathJax를 확장 안에 포함)
+
+## 설치 (약 2분)
+
+스토어 등록 버전이 아니라 **"압축해제된 확장 프로그램"** 으로 설치합니다.
+
+1. 이 저장소의 **Code → Download ZIP** 또는 [Releases](../../releases)의 `MD_Viewer_Extension_v*.zip` 을 받아 **압축을 풉니다.**
+   설치 후에는 폴더를 지우거나 옮기면 안 되니, 영구적인 위치에 풀어 두세요.
+2. 주소창에 입력: Chrome `chrome://extensions` / Brave `brave://extensions`
+3. 오른쪽 위 **개발자 모드** 켜기
+4. **압축해제된 확장 프로그램을 로드합니다** → `manifest.json` 이 들어 있는 폴더 선택
+5. **MD 뷰어 → PDF / Word** 의 **세부정보**에서 **"파일 URL에 대한 액세스 허용"** 켜기 (필수)
+6. 탐색기에서 `.md` 우클릭 → **연결 프로그램** → Chrome(또는 Brave) → **항상 사용**
+
+이제 `.md` 파일을 더블클릭하면 미리보기가 열립니다.
+
+## 사용
+
+| 하고 싶은 일 | 방법 |
+|---|---|
+| 파일 보기 | `.md` 더블클릭 |
+| 수정 내용 반영 | 에디터에서 저장 → 뷰어 탭에서 **F5** |
+| PDF로 저장 | **PDF로 저장** 버튼 → 인쇄창 대상 "PDF로 저장" (Ctrl+P 동일) |
+| Word로 저장 | **.docx로 저장** 버튼 |
+| 경로로 열기 | 툴바의 확장 아이콘 → "파일 경로로 열기" |
+
+상단의 **H2 자동줄**, **소제목 자동감지** 체크로 출력 모양을 바꿀 수 있습니다.
+
+## 문제 해결
+
+- **빈 화면 / "파일을 열 수 없습니다"**: 설치 5번의 "파일 URL에 대한 액세스 허용"이 꺼져 있는 경우가 대부분입니다.
+- **더블클릭하면 다운로드만 됨**: 6번의 연결 프로그램이 브라우저로 지정되어 있는지 확인하세요.
+- **다른 Markdown Viewer 계열 확장과 충돌**할 수 있으니 하나는 제거하세요.
+- **Brave에서 PDF 저장 파일명이 비어 있으면** 저장창에서 직접 입력하세요.
+
+## 구성
+
+| 파일 | 역할 |
+|---|---|
+| `manifest.json` | Manifest V3 설정 (`webNavigation` + `file:///*` 호스트 권한) |
+| `background.js` | `file://...md` 이동을 `viewer.html` 로 가로챔 / 아이콘 클릭 시 `help.html` |
+| `viewer.html` `viewer.css` `viewer.js` | 뷰어 화면, 스크롤 위치 복원, PDF/docx 버튼 |
+| `core.js` | LaTeX 파서 · OMML 변환 · 마크다운 파서 · docx 생성 |
+| `mathjax-config.js` | MathJax 설정 (확장 CSP 때문에 인라인 스크립트 금지 → 별도 파일) |
+| `help.html` `help.js` | 설정 안내, 파일 경로로 열기 |
+| `lib/` | docx 8.5.0 · JSZip 3.10.1 · MathJax 3.2.2 (로컬 내장) |
+
+## 참고
+
+- 지원 환경: Windows, Chrome / Brave (Chromium 계열)
+- 마크다운 파일은 PC 안에서만 읽으며 외부로 전송하지 않습니다.
+- 포함된 오픈소스: [docx](https://github.com/dolanmiu/docx) (MIT), [JSZip](https://github.com/Stuk/jszip) (MIT / GPLv3), [MathJax](https://github.com/mathjax/MathJax) (Apache-2.0)

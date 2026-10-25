@@ -1,0 +1,56 @@
+:root{--accent:#c8521a;--ink:#1a1917;--ink2:#5a5854;--ink3:#9e9b96;--border:#e2e0da;--bg:#e9e7e2}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun Gothic',sans-serif}
+
+/* ── 상단 도구 막대 (sticky: 스크롤 좌표 계산이 단순하도록 문서 흐름 안에 둔다) ── */
+#toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:8px 16px;background:#fff;border-bottom:1px solid var(--border);font-size:13px}
+.brand{font-family:Consolas,monospace;font-size:14px}
+.ver{font-family:Consolas,monospace;font-size:11px;color:var(--ink3)}
+.sep{width:1px;height:18px;background:var(--border)}
+.lbl{font-size:11px;color:var(--ink3)}
+.fname{font-family:Consolas,monospace;font-size:12px;color:var(--accent);font-weight:600;
+  max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink2);cursor:pointer;user-select:none}
+.spacer{flex:1}
+.status{font-size:12px;color:#276a3a}
+.status.err{color:#8b2e24}
+.btn{cursor:pointer;font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--border);border-radius:4px;background:#fff;color:var(--ink2)}
+.btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn.primary:hover{background:#a8421a;border-color:#a8421a}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── A4 용지처럼 보이는 미리보기 ── */
+#stage{padding:18px 12px 60px}
+#paper{width:210mm;max-width:100%;min-height:297mm;margin:0 auto;padding:15mm 17mm;background:#fff;
+  box-shadow:0 2px 14px rgba(0,0,0,.18);
+  font-family:'HY바탕',serif;font-size:10.5pt;line-height:1.5;color:#1a1917;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+/* 원본의 PDF 미리보기 스타일 */
+#paper h1,#paper h2{color:#1F3864;font-family:'맑은 고딕',sans-serif;margin:14pt 0 5pt}
+#paper h3,#paper h4,#paper h5,#paper h6{color:#2E5FA3;font-family:'맑은 고딕',sans-serif;margin:10pt 0 3pt}
+#paper p{margin:3pt 0}
+#paper ul{margin:3pt 0 3pt 18pt}
+#paper li{margin:1pt 0}
+#paper table{border-collapse:collapse;width:100%;margin:6pt 0}
+#paper th{background:#DAEEF3;color:#000;font-family:'맑은 고딕',sans-serif;font-weight:bold;padding:4pt 7pt;border:1px solid #AAAAAA;
+  font-size:9pt;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#paper td{padding:3pt 7pt;border:1px solid #AAAAAA;font-family:'HY바탕',serif;font-size:9pt}
+#paper tr:nth-child(odd) td{background:#fff}
+#paper a{color:#0563C1}
+#paper code{font-family:Consolas,monospace;font-size:.92em}
+#paper .img-ph{color:#888}
+#paper .empty{color:var(--ink3)}
+#paper .load-error{font-family:'맑은 고딕',sans-serif}
+
+/* ── 인쇄(= PDF 저장) ── */
+@page{size:A4;margin:15mm 17mm}
+@media print{
+  body{background:#fff}
+  #toolbar{display:none!important}
+  #stage{padding:0}
+  #paper{width:auto;min-height:0;margin:0;padding:0;box-shadow:none}
+}
