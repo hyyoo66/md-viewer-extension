@@ -3,8 +3,6 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '2026.10.25'; // 의미 있는 변경이 있을 때만 수동으로 올리는 버전 번호
-
   var $ = function (id) { return document.getElementById(id); };
   var params = new URLSearchParams(location.search);
   var src = params.get('src');
@@ -12,7 +10,6 @@
   var srcNoHash = src.split('#')[0];
 
   var toolbar = $('toolbar'), paper = $('paper'), statusEl = $('status'), fnameEl = $('fname');
-  $('ver').textContent = 'v' + APP_VERSION;
 
   var lastMd = '';          // 마지막으로 읽어 온 파일 내용
   var pdfName = 'output.pdf';
@@ -187,7 +184,7 @@
   function loadFile(anchor) {
     return readSource().then(function (text) {
       lastMd = text;
-      return renderAll();       // 렌더링 때마다 AI 지시서 유무도 다시 검사한다 (처음 열기 / F5 / ↻ 새로고침 모두 이 경로)
+      return renderAll();       // 처음 열기 / F5 / ↻ 새로고침 모두 이 경로
     }).then(function () {
       restoreAnchor(anchor);
       setStatus('');            // 불러오기 성공 메시지는 표시하지 않는다
@@ -224,13 +221,31 @@
     }).then(function () { btn.disabled = false; });
   });
 
-  /* ───────────── 그림 삽입 기능 안내 (AI 지시서 + 복사 버튼) ─────────────
-     file:// 로 연 파일은 확장 프로그램이 쓸 수 없으므로, 지시서는 클립보드로 복사해서 에디터에서 직접 붙여넣는다. */
-  var guide = $('guide'), guideCopyMsg = $('guideCopyMsg'), guideMsgTimer = 0;
-  $('guideBlock').textContent = AI_INSTRUCTION_BLOCK;     // 안내창 안에 지시서 본문을 그대로 보여준다
+  /* ───────────── MD 뷰어 안내 / 확장 프로그램 안내 (안내창 2개) ─────────────
+     file:// 로 연 파일은 확장 프로그램이 쓸 수 없으므로, 설명글은 클립보드로 복사해서 AI 대화창에 붙여넣는다. */
+  var IN_EXT = !!(window.chrome && chrome.runtime && chrome.runtime.id);   // 확장 프로그램 안에서 실행 중인지
+  var guide = $('guide'), extGuide = $('extGuide'), guideCopyMsg = $('guideCopyMsg'), guideMsgTimer = 0;
+  $('guideBlock').textContent = AI_INSTRUCTION_BLOCK;     // 설명글 본문 (접힌 상태로 들어 있고, 펼치면 보인다)
 
-  function openGuide() { guide.hidden = false; guide.scrollTop = 0; }
-  function closeGuide() { guide.hidden = true; }
+  function each(list, fn) { Array.prototype.forEach.call(list, fn); }
+  // 확장 프로그램 안내: 확장 프로그램 안에서는 "설치되어 있습니다 + 관리", 웹페이지(독립형/블로그)에서는 "설치 방법"을 보여준다
+  each(extGuide.querySelectorAll('[data-env]'), function (el) {
+    el.hidden = (el.getAttribute('data-env') === 'ext') !== IN_EXT;
+  });
+
+  function openModal(m) { m.hidden = false; m.scrollTop = 0; }
+  function closeModal(m) { m.hidden = true; }
+  $('btnGuide').addEventListener('click', function () { openModal(guide); });
+  $('btnExtGuide').addEventListener('click', function () { openModal(extGuide); });
+  $('guideClose').addEventListener('click', function () { closeModal(guide); });
+  $('extGuideClose').addEventListener('click', function () { closeModal(extGuide); });
+  each([guide, extGuide], function (m) {
+    m.addEventListener('mousedown', function (e) { if (e.target === m) closeModal(m); });   // 바깥 영역 클릭
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    each([guide, extGuide], function (m) { if (!m.hidden) closeModal(m); });
+  });
 
   function showCopyMsg(msg, isErr) {
     guideCopyMsg.textContent = msg;
@@ -242,15 +257,39 @@
     return navigator.clipboard.writeText(AI_INSTRUCTION_BLOCK).then(function () {
       showCopyMsg('✅ 복사했습니다. AI 대화창에 붙여넣으세요.');
     }, function () {
-      showCopyMsg('❌ 복사에 실패했습니다. 아래 지시서를 직접 선택(클릭)해 Ctrl+C 하세요.', true);
+      showCopyMsg('❌ 복사에 실패했습니다. "AI에게 전달할 설명글 내용 보기"를 펼쳐 직접 선택(클릭)해 Ctrl+C 하세요.', true);
     });
   }
-
-  $('btnGuide').addEventListener('click', openGuide);
-  $('guideClose').addEventListener('click', closeGuide);
   $('guideCopy').addEventListener('click', copyInstructions);
-  guide.addEventListener('mousedown', function (e) { if (e.target === guide) closeGuide(); });   // 바깥 영역 클릭
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !guide.hidden) closeGuide(); });
+
+  // 확장 프로그램 관리 주소: 확장 프로그램 안에서는 클릭하면 바로 열린다.
+  // (일반 웹페이지는 chrome:// 주소를 링크로 열 수 없으므로, 그 경우에는 주소를 복사해 준다)
+  function extMsgOf(link) { return link.parentNode.querySelector('.extmsg'); }
+  function showExtHint(link) {
+    var m = extMsgOf(link); if (!m) return;
+    m.className = 'extmsg copymsg'; m.style.color = 'var(--ink3)';
+    m.textContent = ' ← 클릭하면 주소가 복사됩니다 (Ctrl+L → Ctrl+V → Enter)';
+  }
+  function showExtMsg(link, msg, isErr) {
+    var m = extMsgOf(link); if (!m) return;
+    m.style.color = ''; m.className = 'extmsg copymsg' + (isErr ? ' err' : ''); m.textContent = ' ' + msg;
+    clearTimeout(m._t); m._t = setTimeout(function () { showExtHint(link); }, 6000);
+  }
+  each(extGuide.querySelectorAll('.extlink'), function (link) {
+    if (!IN_EXT) {
+      link.title = '웹페이지에서는 chrome:// 주소를 열 수 없어서, 클릭하면 주소가 복사됩니다';
+      showExtHint(link);
+    }
+    link.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (window.chrome && chrome.tabs && chrome.tabs.create) { chrome.tabs.create({ url: 'chrome://extensions' }); return; }
+      navigator.clipboard.writeText('chrome://extensions').then(function () {
+        showExtMsg(link, '주소를 복사했습니다. 새 탭 주소창에 붙여넣고 Enter 를 누르세요.');
+      }, function () {
+        showExtMsg(link, '복사에 실패했습니다. 주소창에 chrome://extensions 를 직접 입력하세요.', true);
+      });
+    });
+  });
 
   /* ───────────── 시작 ───────────── */
   try { history.scrollRestoration = 'manual'; } catch (e) { /* 무시 */ }
