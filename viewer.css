@@ -62,7 +62,8 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 .modal-body pre{font-family:Consolas,'맑은 고딕',monospace;font-size:12px;line-height:1.55;background:#f7f6f2;border:1px solid var(--border);
   border-radius:6px;padding:10px 12px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .modal-body pre.block{max-height:300px;overflow:auto;user-select:all}
-.copyrow{display:flex;align-items:center;gap:12px;margin:6px 0}
+.copyrow{display:flex;align-items:center;flex-wrap:wrap;gap:10px 12px;margin:8px 0 4px}
+.edit-text{display:block;width:100%;height:52vh;min-height:220px;resize:vertical;margin:8px 0;padding:10px 12px;font-family:Consolas,'맑은 고딕',monospace;font-size:13px;line-height:1.55;color:var(--ink);background:#fbfaf7;border:1px solid var(--border);border-radius:6px;tab-size:4;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}
 .copymsg{font-size:12.5px;color:#276a3a}
 .copymsg.err{color:#8b2e24}
 .modal-body ul.feat{list-style:none;padding-left:0}
