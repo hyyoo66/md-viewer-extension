@@ -24,7 +24,7 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 #stage{padding:18px 12px 60px}
 #paper{width:210mm;max-width:100%;min-height:297mm;margin:0 auto;padding:15mm 17mm;background:#fff;
   box-shadow:0 2px 14px rgba(0,0,0,.18);
-  font-family:'HY바탕',serif;font-size:10.5pt;line-height:1.5;color:#1a1917;
+  font-family:'HY바탕',serif;font-size:10.5pt;line-height:1.5;color:#000;
   -webkit-print-color-adjust:exact;print-color-adjust:exact}
 
 /* 원본의 PDF 미리보기 스타일 */
@@ -36,7 +36,7 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 #paper table{border-collapse:collapse;width:100%;margin:6pt 0}
 #paper th{background:#DAEEF3;color:#000;font-family:'맑은 고딕',sans-serif;font-weight:bold;padding:4pt 7pt;border:1px solid #AAAAAA;
   font-size:9pt;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-#paper td{padding:3pt 7pt;border:1px solid #AAAAAA;font-family:'HY바탕',serif;font-size:9pt}
+#paper td{color:#1a1917;padding:3pt 7pt;border:1px solid #AAAAAA;font-family:'HY바탕',serif;font-size:9pt}
 #paper tr:nth-child(odd) td{background:#fff}
 #paper a{color:#0563C1}
 #paper code{font-family:Consolas,monospace;font-size:.92em}
@@ -75,6 +75,8 @@ body{background:var(--bg);color:var(--ink);font-family:'맑은 고딕','Malgun G
 .modal-body summary{cursor:pointer;font-size:12.5px;color:var(--ink2)}
 .modal-body .extlink{font-family:Consolas,monospace;font-size:13px;color:#0563C1;text-decoration:underline;cursor:pointer}
 .modal-body .refsub{color:var(--ink3);margin-left:4px}
+.modal-body .addrline{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:14px 0 6px;padding:10px 12px;background:#f7f6f2;border:1px solid var(--border);border-radius:6px}
+.modal-body .addrline .extlink{font-size:15px;font-weight:700;user-select:all}
 
 /* ── 인쇄(= PDF 저장) ── */
 @page{size:A4;margin:15mm 17mm}

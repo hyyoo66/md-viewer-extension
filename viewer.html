@@ -69,14 +69,17 @@
       <button type="button" class="btn" id="extGuideClose" aria-label="닫기">✕</button>
     </div>
     <div class="modal-body">
+      <div class="addrline">
+        <a href="#" class="extlink" title="클릭하면 확장 프로그램 관리 페이지가 열립니다 (웹페이지에서는 주소가 복사됩니다)">chrome://extensions</a>
+        <button type="button" class="btn extcopy">📋 복사</button>
+        <span class="refsub">(Brave는 brave://extensions)</span><span class="extmsg copymsg"></span>
+      </div>
       <div data-env="web">
         <p>Chrome 확장 프로그램으로 설치하면 <b>.md 파일을 더블클릭</b>해서 바로 열 수 있습니다. (지금 이 페이지는 설치 없이 끌어다 놓아서 쓰는 방식입니다.)</p>
         <h3>설치 방법</h3>
         <ol>
           <li><a href="https://hyyoo66.tistory.com/337" target="_blank" rel="noopener noreferrer">설치 안내 글</a>에서 확장 프로그램을 받아 압축을 풉니다.</li>
-          <li><b>확장 프로그램 관리 페이지</b>를 엽니다.
-            <a href="#" class="extlink" title="클릭하면 확장 프로그램 관리 페이지가 열립니다">chrome://extensions</a>
-            <span class="refsub">(Brave는 brave://extensions)</span><span class="extmsg copymsg"></span><br>
+          <li><b>확장 프로그램 관리 페이지</b>를 엽니다. <span class="refsub">(위의 주소를 새 탭 주소창에 붙여넣기)</span><br>
             열리면 <b>개발자 모드</b>를 켜고, "압축해제된 확장 프로그램을 로드합니다"로 압축 푼 폴더를 선택합니다.</li>
           <li>세부정보에서 <b>"파일 URL에 대한 액세스 허용"</b>을 켭니다. 그리고 .md 파일 우클릭 → 연결 프로그램 → Chrome → "항상 사용".</li>
         </ol>
@@ -85,8 +88,7 @@
       <div data-env="ext" hidden>
         <p>확장 프로그램이 <b>설치되어 있습니다.</b> .md 파일을 더블클릭하면 이 뷰어로 열립니다.</p>
         <ul>
-          <li>관리 페이지: <a href="#" class="extlink" title="클릭하면 확장 프로그램 관리 페이지가 열립니다">chrome://extensions</a>
-            <span class="refsub">(설정 · 업데이트 · 삭제)</span><span class="extmsg copymsg"></span></li>
+          <li>관리 페이지: 위의 주소 <span class="refsub">(설정 · 업데이트 · 삭제)</span></li>
           <li>파일이 안 열리면: 세부정보에서 <b>"파일 URL에 대한 액세스 허용"</b>을 확인하세요.</li>
           <li>업데이트: 새 버전을 같은 폴더에 덮어쓴 뒤, 관리 페이지에서 이 확장 프로그램의 <b>새로고침(↻)</b>을 누르세요.</li>
         </ul>

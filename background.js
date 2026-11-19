@@ -18,9 +18,9 @@ chrome.webNavigation.onBeforeNavigate.addListener(
   }
 );
 
-// 툴바 아이콘: 설정 안내 / 파일 경로로 열기 페이지
+// 툴바 아이콘: 빈 "새 파일 만들기(붙여넣기)" 화면을 새 탭으로 연다
 chrome.action.onClicked.addListener(() => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('help.html') });
+  chrome.tabs.create({ url: VIEWER_URL + '?paste=1' });
 });
 
 // 처음 설치하면 설정 안내를 한 번 보여준다

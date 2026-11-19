@@ -10,6 +10,10 @@
   if (!src && !pasteMode) { location.replace('help.html'); return; }
   var srcNoHash = (src || '').split('#')[0];
   var PKEY = 'mdview.pasteText';                   // 붙여넣은 글은 세션 저장소에 두어 F5 로 새로고침해도 유지한다
+  // 새로 만들어 저장한 .md 파일의 핸들: 저장한 뒤에는 이 파일을 이어서 읽는다 (새로고침·자동 갱신).
+  // 핸들은 IndexedDB 에 탭별로 보관해서 F5 로 새로고침해도 이어진다. (탭 번호는 세션 저장소에 둔다)
+  var fileHandle = null, hMod = 0, hSize = -1, TAB = '';
+  try { TAB = sessionStorage.getItem('mdview.tab') || ''; if (!TAB) { TAB = String(Date.now()) + Math.random().toString(36).slice(2, 8); sessionStorage.setItem('mdview.tab', TAB); } } catch (e) { TAB = 'x'; }
 
   var toolbar = $('toolbar'), paper = $('paper'), statusEl = $('status'), fnameEl = $('fname');
 
@@ -30,12 +34,12 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
   function fileLabel() {
-    if (pasteMode) return '(붙여넣은 글)';
+    if (pasteMode) return fileHandle ? fileHandle.name : '(붙여넣은 글)';
     try { return decodeURIComponent(srcNoHash.split('/').pop()); } catch (e) { return srcNoHash; }
   }
   // 저장 파일명 기준: .md 파일 자체의 이름 (시험.md → 시험).  파일명에 쓸 수 없는 글자는 제거한다.
   function fileBaseName() {
-    if (pasteMode) return '';
+    if (pasteMode && !fileHandle) return '';       // 저장하지 않은 붙여넣은 글은 첫 제목으로 이름을 정한다
     return fileLabel().replace(/\.(md|markdown)$/i, '').replace(/[\/:*?"<>|\\]/g, '').trim();
   }
   function decodeText(buf) {
@@ -43,11 +47,44 @@
     try { return new TextDecoder('euc-kr').decode(buf); } catch (e) { /* 미지원 */ }
     return new TextDecoder('utf-8').decode(buf);
   }
+  function idb() {
+    return new Promise(function (res, rej) {
+      var r = indexedDB.open('mdviewer-ext', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { rej(r.error); };
+    });
+  }
+  function idbGet(key) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var q = db.transaction('kv').objectStore('kv').get(key);
+        q.onsuccess = function () { res(q.result); };
+        q.onerror = function () { rej(q.error); };
+      });
+    });
+  }
+  function idbSet(key, val) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var q = db.transaction('kv', 'readwrite').objectStore('kv').put(val, key);
+        q.onsuccess = function () { res(); };
+        q.onerror = function () { rej(q.error); };
+      });
+    });
+  }
+  function pasteText() {
+    var t = '';
+    try { t = sessionStorage.getItem(PKEY) || ''; } catch (e) { /* 무시 */ }
+    return t;
+  }
   function readSource() {
     if (pasteMode) {
-      var t = '';
-      try { t = sessionStorage.getItem(PKEY) || ''; } catch (e) { /* 무시 */ }
-      return Promise.resolve(t);
+      if (!fileHandle) return Promise.resolve(pasteText());
+      return fileHandle.getFile().then(function (f) {
+        hMod = f.lastModified; hSize = f.size;
+        return f.arrayBuffer();
+      }).then(decodeText).catch(function () { return pasteText(); });   // 권한을 잃었거나 파일이 옮겨졌으면 붙여넣었던 글을 보여 준다
     }
     return fetch(srcNoHash, { cache: 'no-store' }).then(function (res) {
       if (res.status >= 400) throw new Error('HTTP ' + res.status);
@@ -312,11 +349,17 @@
     apply: function (text) {
       var a = captureAnchor();
       lastMd = text;
+      if (fileHandle) { fileHandle = null; idbSet('saved:' + TAB, null).catch(function () { /* 무시 */ }); }   // 새로 붙여넣은 글: 이전에 저장한 파일은 더 이상 따라가지 않는다
       try { sessionStorage.setItem(PKEY, text); } catch (e) { /* 용량 초과 등: 새로고침하면 사라진다 */ }
       return renderAll().then(function () {
         restoreAnchor(a);
         setStatus('✏ 붙여넣은 글 (파일에 저장하지 않음)');
       });
+    },
+    saved: function (h) {                          // 저장한 파일을 이어서 읽는다
+      fileHandle = h;
+      idbSet('saved:' + TAB, h).catch(function () { /* 보관 실패는 무시 */ });
+      return loadFile(captureAnchor());
     }
   };
 
@@ -399,8 +442,11 @@
         }
         return writeTo(th, text);
       }).then(function () {
-        edShow('✅ ' + th.name + ' 을(를) 만들었습니다.');
         return applyEditor();
+      }).then(function () {
+        return ED.saved(th);          // 저장한 파일을 이어서 본다: 이후 그 파일을 고치면 다시 그려진다
+      }).then(function () {
+        edShow('✅ ' + th.name + ' 을(를) 만들었습니다. 이 화면은 그 파일을 이어서 보여 주고, 파일을 고치면 다시 그립니다.');
       });
     }).catch(function (e) {
       if (e && e.name === 'AbortError') return;      // 저장 위치 선택을 취소함
@@ -515,11 +561,25 @@
     });
   });
 
+  // 주소 줄의 [복사] 버튼: 항상 주소를 클립보드에 복사한다
+  each(extGuide.querySelectorAll('.extcopy'), function (btn) {
+    btn.addEventListener('click', function () {
+      var link = btn.parentNode.querySelector('.extlink');
+      navigator.clipboard.writeText('chrome://extensions').then(function () {
+        showExtMsg(link, '주소를 복사했습니다. 새 탭 주소창에 붙여넣고 Enter 를 누르세요.');
+      }, function () {
+        showExtMsg(link, '복사에 실패했습니다. 주소를 드래그해서 복사하세요.', true);
+      });
+    });
+  });
+
   /* ───────────── 시작 ───────────── */
   try { history.scrollRestoration = 'manual'; } catch (e) { /* 무시 */ }
 
   var saved = loadSavedAnchor();
-  loadFile(saved).then(function (ok) {
+  // 붙여넣기 탭을 F5 로 새로고침한 경우: 이 탭에서 저장해 둔 파일이 있으면 그 파일을 이어서 읽는다
+  var handleReady = (pasteMode && pasteText()) ? idbGet('saved:' + TAB).then(function (h) { if (h && h.getFile) fileHandle = h; }).catch(function () { /* 무시 */ }) : Promise.resolve();
+  handleReady.then(function () { return loadFile(saved); }).then(function (ok) {
     if (!ok) return;           // 읽기 실패 시에는 예전에 저장된 위치를 덮어쓰지 않는다
     ready = true;
     if (pasteMode && !lastMd.trim()) openEditor();      // 붙여넣기 모드로 처음 열면 바로 붙여넣기 창을 연다
@@ -530,4 +590,14 @@
       setTimeout(again, 500);
     }
   });
+
+  // 저장한 파일을 에디터로 고치면 1초 안에 다시 그린다
+  var pollBusy = false;
+  setInterval(function () {
+    if (!fileHandle || pollBusy || document.hidden) return;
+    pollBusy = true;
+    fileHandle.getFile().then(function (f) {
+      if (f.lastModified !== hMod || f.size !== hSize) return loadFile(captureAnchor());
+    }).catch(function () { /* 권한을 잃었거나 파일이 이동됨: 조용히 무시 */ }).then(function () { pollBusy = false; });
+  }, 1000);
 })();

@@ -327,7 +327,18 @@ function isSubtitleCandidate(t, nextLine){
 
 // 블록 수식 델리미터 감지: $$...$$ / \[...\] (단일·여러 줄) / ChatGPT가 종종 출력하는 단독 [ ... ] 줄 형태
 // arr: 줄 배열, idx: 시작 인덱스. 매치되면 {latex, nextIdx} 반환, 아니면 null.
+// 정렬·행렬 환경에서 줄 끝이 \\ 가 아니라 \ 하나로 끝난 경우(AI 출력에서 역슬래시가 하나 사라지는 일이 잦다)를
+// \\ 로 바로잡는다. 그대로 두면 여러 줄이 한 줄로 이어져 페이지 밖으로 넘친다.
+function fixRowBreaks(latex){
+  if(!/\\begin\{(?:aligned|alignedat|align\*?|gathered|gather\*?|split|cases|array|[pbvBV]?matrix|smallmatrix)\}/.test(latex))return latex;
+  return latex.replace(/([^\\])\\[ \t]*(\r?\n)/g,'$1\\\\$2');
+}
 function extractBlockMath(arr, idx){
+  const r=extractBlockMathRaw(arr,idx);
+  if(r)r.latex=fixRowBreaks(r.latex);
+  return r;
+}
+function extractBlockMathRaw(arr, idx){
   const line=arr[idx];
   // 한 줄짜리: $$...$$ 또는 \[...\]
   const single=line.match(/^\s*\$\$(.+?)\$\$\s*$/)||line.match(/^\s*\\\[(.+?)\\\]\s*$/);
@@ -420,7 +431,7 @@ function parseMd(md){
   }
 
   function inline(text,opts={}){
-    const fs=opts.size||22,baseBold=opts.bold||false,col=opts.color||'1a1917',fnt=opts.font||'HY바탕';
+    const fs=opts.size||22,baseBold=opts.bold||false,col=opts.color||'000000',fnt=opts.font||'HY바탕';
     const tokens=parseInlineTokens(text,baseBold,false);
     const out=[];
     for(const tk of tokens){
