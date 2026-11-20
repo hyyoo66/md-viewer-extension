@@ -120,6 +120,7 @@ function parseLaTeX(latex){
 // AST → OMML 문자열 (DOM 없이 직접 생성)
 // ════════════════════════════════════════════════════════
 function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function _escAttr(s){return _esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}   // HTML 속성값에 넣는 글은 따옴표도 바꾼다
 function astToOmml(n){
   if(!n)return'';
   const t=(tag,c)=>`<m:${tag}>${c}</m:${tag}>`;
@@ -389,7 +390,7 @@ function parseMd(md){
   const{Paragraph,TextRun,Table,TableRow,TableCell,
         HeadingLevel,AlignmentType,BorderStyle,WidthType,
         ShadingType,LevelFormat,ExternalHyperlink,UnderlineType,LineRuleType,TabStopType,ImageRun}=docx;
-  const CW=9360;
+  const CW=9978;   // A4 본문 폭: 11906 - 좌우 여백 964*2 (단위: twip)
   const cb={style:BorderStyle.SINGLE,size:1,color:'AAAAAA'};
   const cbs={top:cb,bottom:cb,left:cb,right:cb};
 
@@ -698,7 +699,8 @@ function parseMd(md){
   }
   // data: 그림은 <img> 로, 참조 이름을 못 찾았거나 외부 URL 이면 자리 표시 텍스트로 (alt 는 이미 이스케이프된 상태)
   function imgHtml(alt,url,ref){
-    if(/^data:image\//i.test(url))return `<img src="${url}" alt="${alt}" style="max-width:100%;height:auto">`;
+    // 주소는 base64 글자만 있는 data:image 만 허용한다 (" 등이 섞이면 <img> 에 속성이 끼어들 수 있다). alt 는 이미 _esc 된 상태라 따옴표만 더 바꾼다
+    if(/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+$/i.test(url))return `<img src="${url}" alt="${String(alt).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" style="max-width:100%;height:auto">`;
     if(url)return `<span class="img-ph">[이미지: ${alt||url}]</span>`;
     return `<span class="img-ph" style="color:#C00000">[이미지 없음: ${ref||alt}]</span>`;
   }
@@ -711,7 +713,7 @@ function parseMd(md){
       .replace(/!\[([^\]]*)\]\[([^\]]*)\]/g,function(_,alt,ref){ref=ref||alt;return imgHtml(alt,imageRefs[normRef(ref)]||'',ref);})
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g,function(_,txt,url){
         url=url.trim().replace(/"/g,'%22');
-        if(/^javascript:/i.test(url))url='#';
+        if(/^(javascript|vbscript|data):/i.test(url.replace(/[\x00-\x20]/g,'')))url='#';   // 탭·공백을 끼운 우회도 막는다
         return `<a href="${url}">${txt}</a>`;
       }).replace(/`([^`]+)`/g,'<code>$1</code>');
   }
@@ -774,9 +776,9 @@ const AI_INSTRUCTION_BLOCK=`[이 마크다운 파일의 구성 설명]
 // ── docx 용 그림 준비 ──
 // docx 8.5.0 의 ImageRun 은 데이터를 항상 .png 로 취급하므로, PNG 가 아닌 그림(JPEG/GIF/WebP 등)은 PNG 로 변환해서 넣는다.
 let docxImgCache={};   // data URL → {data:Uint8Array, width, height}
-function fitImg(w,h){  // 페이지 본문 폭(약 600px)과 높이(약 820px) 안으로 비율 유지 축소
+function fitImg(w,h){  // 페이지 본문 폭(약 640px)과 높이(약 960px) 안으로 비율 유지 축소 (A4, 여백 제외)
   if(!w||!h)return{width:300,height:200};
-  const s=Math.min(1,600/w,820/h);
+  const s=Math.min(1,640/w,960/h);
   return{width:Math.round(w*s),height:Math.round(h*s)};
 }
 function b64ToBytes(b64){
@@ -840,7 +842,7 @@ async function buildDocx(rawMd,baseName){
         {id:'Hyperlink',name:'Hyperlink',basedOn:'Normal',run:{color:'0563C1',underline:{type:UnderlineType.SINGLE}}},
       ]
     },
-    sections:[{properties:{page:{size:{width:12240,height:15840},margin:{top:1440,right:1440,bottom:1440,left:1440}}},children:parseMd(md)}]
+    sections:[{properties:{page:{size:{width:11906,height:16838},margin:{top:850,right:964,bottom:850,left:964}}},children:parseMd(md)}]
   });
   let blob=await Packer.toBlob(doc2);
   if(mathQueue.length>0)blob=await patchMathInBlob(blob);
