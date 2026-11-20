@@ -395,7 +395,7 @@ function parseMd(md){
   const cbs={top:cb,bottom:cb,left:cb,right:cb};
 
   // 인라인 파서: 볼드/이탤릭 내부에 수식이 있어도 정확히 처리
-  function parseInlineTokens(text, bold=false, italic=false){
+  function parseInlineTokens(text, bold=false, italic=false, small=false){
     const tokens=[];let i=0;
     while(i<text.length){
       // \(...\) 인라인 수식
@@ -409,24 +409,29 @@ function parseMd(md){
         if(m){tokens.push({type:'image',alt:m[1],ref:'',url:m[2].trim()});i+=m[0].length;continue;}
         m=rest.match(/^!\[([^\]]*)\]\[([^\]]*)\]/);
         if(m){const ref=m[2]||m[1];tokens.push({type:'image',alt:m[1],ref:ref,url:imageRefs[normRef(ref)]||''});i+=m[0].length;continue;}
-        tokens.push({type:'text',text:'!',bold,italic});i++;continue; // 그림 문법이 아닌 '!['
+        tokens.push({type:'text',text:'!',bold,italic,small});i++;continue; // 그림 문법이 아닌 '!['
       }
       // [text](url) 링크
-      if(text[i]==='['){const m=text.slice(i).match(/^\[([^\]]+)\]\(([^)]+)\)/);if(m){tokens.push({type:'link',text:m[1],url:m[2]});i+=m[0].length;continue;}else{tokens.push({type:'text',text:'[',bold,italic});i++;continue;}}
+      if(text[i]==='['){const m=text.slice(i).match(/^\[([^\]]+)\]\(([^)]+)\)/);if(m){tokens.push({type:'link',text:m[1],url:m[2]});i+=m[0].length;continue;}else{tokens.push({type:'text',text:'[',bold,italic,small});i++;continue;}}
       // https:// URL
       if(text.slice(i,i+4)==='http'){const m=text.slice(i).match(/^https?:\/\/[^\s<>"]+/);if(m){tokens.push({type:'link',text:m[0],url:m[0]});i+=m[0].length;continue;}}
       // ***bold+italic***
-      if(text.slice(i,i+3)==='***'){const e=text.indexOf('***',i+3);if(e>i){tokens.push(...parseInlineTokens(text.slice(i+3,e),true,true));i=e+3;continue;}}
+      if(text.slice(i,i+3)==='***'){const e=text.indexOf('***',i+3);if(e>i){tokens.push(...parseInlineTokens(text.slice(i+3,e),true,true,small));i=e+3;continue;}}
       // **bold**
-      if(text.slice(i,i+2)==='**'){const e=text.indexOf('**',i+2);if(e>i){tokens.push(...parseInlineTokens(text.slice(i+2,e),true,italic));i=e+2;continue;}}
+      if(text.slice(i,i+2)==='**'){const e=text.indexOf('**',i+2);if(e>i){tokens.push(...parseInlineTokens(text.slice(i+2,e),true,italic,small));i=e+2;continue;}}
       // *italic*
-      if(text[i]==='*'&&text[i+1]!=='*'){const e=text.indexOf('*',i+1);if(e>i&&text[e+1]!=='*'){tokens.push(...parseInlineTokens(text.slice(i+1,e),bold,true));i=e+1;continue;}}
+      if(text[i]==='*'&&text[i+1]!=='*'){const e=text.indexOf('*',i+1);if(e>i&&text[e+1]!=='*'){tokens.push(...parseInlineTokens(text.slice(i+1,e),bold,true,small));i=e+1;continue;}}
       // `code`
-      if(text[i]==='`'){const e=text.indexOf('`',i+1);if(e>i){tokens.push({type:'text',text:text.slice(i+1,e),bold,italic});i=e+1;continue;}}
+      if(text[i]==='`'){const e=text.indexOf('`',i+1);if(e>i){tokens.push({type:'text',text:text.slice(i+1,e),bold,italic,small});i=e+1;continue;}}
+      // <small>작은 글씨</small>
+      if(text[i]==='<'){
+        if(text.slice(i,i+7).toLowerCase()==='<small>'){const e=text.toLowerCase().indexOf('</small>',i+7);if(e>i){tokens.push(...parseInlineTokens(text.slice(i+7,e),bold,italic,true));i=e+8;continue;}}
+        tokens.push({type:'text',text:'<',bold,italic,small});i++;continue; // 그 밖의 '<' 는 글자 그대로
+      }
       // 일반 텍스트 축적
       let j=i;
-      while(j<text.length&&!'$[*`'.includes(text[j])&&!(text[j]==='\\'&&text[j+1]==='(')&&!(text[j]==='h'&&text.slice(j,j+4)==='http')&&!(text[j]==='!'&&text[j+1]==='['))j++;
-      if(j>i){tokens.push({type:'text',text:text.slice(i,j),bold,italic});i=j;}else i++;
+      while(j<text.length&&!'$[*`<'.includes(text[j])&&!(text[j]==='\\'&&text[j+1]==='(')&&!(text[j]==='h'&&text.slice(j,j+4)==='http')&&!(text[j]==='!'&&text[j+1]==='['))j++;
+      if(j>i){tokens.push({type:'text',text:text.slice(i,j),bold,italic,small});i=j;}else i++;
     }
     return tokens;
   }
@@ -451,7 +456,7 @@ function parseMd(md){
       } else if(tk.type==='link'){
         out.push(new ExternalHyperlink({link:tk.url,children:[new TextRun({text:tk.text,color:'0563C1',underline:{type:UnderlineType.SINGLE},font:fnt,size:fs,bold:tk.bold||baseBold})]}));
       } else if(tk.type==='text'&&tk.text){
-        out.push(new TextRun({text:tk.text,font:fnt,size:fs,bold:tk.bold||baseBold,italics:tk.italic||false,color:col}));
+        out.push(new TextRun({text:tk.text,font:fnt,size:tk.small?Math.max(fs-4,14):fs,bold:tk.bold||baseBold,italics:tk.italic||false,color:col}));
       }
     }
     return out.length?out:[new TextRun({text:''})];
@@ -706,8 +711,8 @@ function parseMd(md){
   }
   function inlineHtml(t){
     // 확장 프로그램 페이지에서 파일 내용을 그대로 HTML 로 넣지 않도록 특수문자를 먼저 이스케이프하고,
-    // 표 셀 줄바꿈 등에 흔히 쓰이는 안전한 태그(<br>, <sub>, <sup>, <b>, <i>, <u>, <strong>, <em>)만 다시 허용한다.
-    t=_esc(t).replace(/&lt;br\s*\/?&gt;/gi,'<br>').replace(/&lt;(\/?)(sub|sup|b|i|u|strong|em)&gt;/gi,'<$1$2>');
+    // 표 셀 줄바꿈 등에 흔히 쓰이는 안전한 태그(<br>, <sub>, <sup>, <b>, <i>, <u>, <strong>, <em>, <small>)만 다시 허용한다.
+    t=_esc(t).replace(/&lt;br\s*\/?&gt;/gi,'<br>').replace(/&lt;(\/?)(sub|sup|b|i|u|strong|em|small)&gt;/gi,'<$1$2>');
     return t.replace(/\*\*\*(.+?)\*\*\*/g,'<strong><em>$1</em></strong>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>')
       .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,function(_,alt,url){return imgHtml(alt,url.trim(),'');})
       .replace(/!\[([^\]]*)\]\[([^\]]*)\]/g,function(_,alt,ref){ref=ref||alt;return imgHtml(alt,imageRefs[normRef(ref)]||'',ref);})
